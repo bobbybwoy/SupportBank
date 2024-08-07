@@ -2,9 +2,99 @@
 List<Transaction> transactions = [];
 List<Account> accounts = [];
 
+// Process command line arguments
+
 try
 {
-    using (StreamReader reader = new("data/Transactions2014.csv"))
+    // I don't like functions with side effects...
+    ReadCSVFile("data/Transactions2014.csv");
+
+    switch (args.Length)
+    {
+        case 0:
+            return;
+        case 2:
+            if (args[0].ToLower() == "list")
+                switch (args[1])
+                {
+                    case "All":
+                        // Console.WriteLine("Call ListAll()");
+                        ListAll();
+                        break;
+                    default:
+                        // Console.WriteLine("Call ListAccount()");
+                        ListAccount(args[1]);
+                        break;
+                }
+            break;
+        case 4:
+            throw new NotImplementedException("We have not implemented the four argument process yet.");
+        // break;
+        default:
+            throw new ArgumentException("Too many or too few arguments!\nList All or List <personname> commands allowed.");
+    }
+
+    // foreach (Person person in people)
+    // {
+    //     Console.WriteLine(person);
+    // }
+}
+catch (FileNotFoundException e)
+{
+    Console.WriteLine($"File Not Found Exception: {e.Message}");
+}
+catch (DirectoryNotFoundException e)
+{
+    Console.WriteLine($"Directory Not Found Exception: {e.Message}");
+}
+catch (NotImplementedException e)
+{
+    Console.WriteLine($"Not Implemented Exception: {e.Message}");
+}
+catch (IOException e)
+{
+    Console.WriteLine($"I/O Exception: {e.Message}");
+}
+catch (ArgumentException e)
+{
+    Console.WriteLine($"Argument Exception: {e.Message}");
+}
+catch (Exception e)
+{
+    Console.WriteLine($"Exception: {e.Message}");
+}
+
+/*
+    Functions
+*/
+int GetOrCreatePerson(string name)
+{
+    Person? person = people.Find(p => p.Name == name);
+    if (person is null) {
+        person = new Person(name);
+        people.Add(person);
+    }
+
+    return person.Id;
+}
+
+Account GetOrCreateAccount(int personId)
+{
+    Account? account  = accounts.Find(acct => acct.AccountId == personId);
+    if (account is null)
+    {
+        account = new Account(){ AccountId = personId, };
+        accounts.Add(account);
+    }
+
+    // Although the warning states that it may be null, this is not true...
+    return account;
+}
+
+void ReadCSVFile(string filePath)
+{
+    // using (StreamReader reader = new("data/Transactions2014.csv"))
+    using (StreamReader reader = new(filePath))
     {
         // Ignore the header record
         reader.ReadLine();
@@ -39,111 +129,49 @@ try
             ToAccount.Credit += transaction.Amount;
         }
     }
+}
 
-    // foreach (Person person in people)
-    // {
-    //     Console.WriteLine(person);
-    // }
+void ReadXMLFile(string filePath)
+{
+    throw new NotImplementedException("Function not ready");
 
-    foreach (Transaction transaction in transactions)
-    {
-        Console.WriteLine(transaction);
-    }
+}
 
+void ReadJSONFile(string filePath)
+{
+    throw new NotImplementedException("Function not ready");
+}
+
+void ListAll()
+{
     foreach (Account account in accounts)
     {
         Person? person = people.Find(p => p.Id == account.AccountId) ?? null;
         Console.WriteLine($"{person?.Name} {account}");
     }
 }
-catch (NotImplementedException e)
-{
-    Console.WriteLine(e.Message);
-}
-catch (IOException e)
-{
-    Console.WriteLine("Cannot read the file");
-    Console.WriteLine(e.Message);
-}
 
-/*
-    Functions
-*/
-int GetOrCreatePerson(string name)
+void ListAccount(string accountName)
 {
-    Person? person = people.Find(p => p.Name == name);
-    if (person is null) {
-        person = new Person(name);
-        people.Add(person);
-    }
+    // Get the person Id
+    Person? person = people.Find(p => p.Name == accountName);
+    if (person is null)
+        throw new ArgumentException($"Account {accountName} cannot be found");
 
-    return person.Id;
-}
+    // Create a filtered list of transactions
+    List<Transaction> filteredTransactions =
+        transactions.FindAll(t => t.FromPersonId == person.Id || t.ToPersonId == person.Id);
 
-Account GetOrCreateAccount(int personId)
-{
-    Account? account  = accounts.Find(acct => acct.AccountId == personId);
-    if (account is null)
+    // Output the transaction list
+    foreach (Transaction transaction in filteredTransactions)
     {
-        account = new Account(){ AccountId = personId, };
-        accounts.Add(account);
+        Person? fromPerson = people.Find(p => p.Id == transaction.FromPersonId);
+        Person? toPerson = people.Find(p => p.Id == transaction.ToPersonId);
+
+        // Console.WriteLine(transaction);
+        Console.WriteLine($"Transaction Date: {transaction.TransactionDate}, From Person Id: {fromPerson?.Name}, To Person Id: {toPerson?.Name}, Narrative: {transaction.Narrative}, Amount: {transaction.Amount:C2}");
     }
 
-    // Although the warning states that it may be null, this is not true...
-    return account;
-}
-
-public class Person
-{
-    private static int _id = 0;
-    public Person(string name)
-    {
-        Id = ++_id;
-        Name = name;
-    }
-
-    public int Id { get; }
-    public string Name { get; set; } = "";
-
-    public override string ToString()
-    {
-        return $"Id: {Id} Name: {Name}";
-    }
-}
-
-public class Transaction
-{
-    public DateOnly TransactionDate { get; set; }
-    public int FromPersonId { get; set; }
-    public int ToPersonId { get; set; }
-    public string Narrative { get; set; } = "";
-    public decimal Amount { get; set; }
-
-    public override string ToString()
-    {
-        return $"Transaction Date: {TransactionDate}, From Person Id: {FromPersonId}, To Person Id: {ToPersonId}, Narrative: {Narrative}, Amount: {Amount:C2}";
-    }
-}
-
-// TODO: Create an account entry class
-
-public class Account
-{
-    // The account holder From person
-    public int AccountId { get; set; }
-
-    // TODO: Create a list of debit account entries
-    // public List<AccountEntry> Debit { get; set; } = [];
-
-    // TODO: Create a list of credit account entries
-    // public List<AccountEntry> Credit { get; set; } = [];
-
-    public decimal Debit { get; set; }
-
-    public decimal Credit { get; set; }
-
-    public override string ToString()
-    {
-        return $"Account Id: {AccountId} Amount Owed: {Debit:C2} Amount Due: {Credit:C2}";
-    }
+    Account? account = accounts.Find(a => a.AccountId == person.Id);
+    Console.WriteLine($"\nAmount Owed: {account.Debit:C2} Amount Due: {account.Credit:C2}");
 }

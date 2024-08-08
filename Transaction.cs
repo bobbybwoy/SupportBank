@@ -8,6 +8,6 @@ public class Transaction
 
     public override string ToString()
     {
-        return $"Transaction Date: {TransactionDate}, From Person Id: {FromPersonId}, To Person Id: {ToPersonId}, Narrative: {Narrative}, Amount: {Amount:C2}";
+        return $"Transaction Date: {TransactionDate.ToShortDateString()}, From Person Id: {FromPersonId}, To Person Id: {ToPersonId}, Narrative: {Narrative}, Amount: {Amount:C2}";
     }
 }

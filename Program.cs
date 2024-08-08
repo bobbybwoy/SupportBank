@@ -1,10 +1,15 @@
-﻿using NLog;
+﻿using Newtonsoft.Json;
+
+using NLog;
 using NLog.Config;
 using NLog.Targets;
 
 List<Person> people = [];
 List<Transaction> transactions = [];
 List<Account> accounts = [];
+List<TxnJSONFormat>? jsonTransactions = [];
+
+// This variable is used to for logging and exceptions
 string errorMessage = "";
 
 // Setup logging... (as supplied by TechSwitch)
@@ -26,7 +31,8 @@ logger.Info("Started...");
 try
 {
     // TODO: Remove functions with side effects...
-    ReadCSVFile("data/Transactions2014.csv");
+    // ReadCSVFile("data/Transactions2014.csv");
+    ReadJSONFile("data/Transactions2013.json");
 
     // Process command line arguments
     switch (args.Length)
@@ -86,7 +92,7 @@ catch (IOException e)
 }
 catch (ArgumentException e)
 {
-    errorMessage = $"Argument Exception: {e.Message}";
+    errorMessage = $"Argument Exception: {e.Message} {e.StackTrace}";
     logger.Error(errorMessage);
     Console.WriteLine(errorMessage);
 }
@@ -183,7 +189,41 @@ void ReadXMLFile(string filePath)
 
 void ReadJSONFile(string filePath)
 {
-    throw new NotImplementedException("Function not ready");
+    logger.Info("ReadJsonFile with file: {filePath}");
+
+    using(StreamReader reader = new(filePath))
+    {
+        string rawJsonData = reader.ReadToEnd();
+
+        jsonTransactions = JsonConvert.DeserializeObject<List<TxnJSONFormat>>(rawJsonData) ?? [];
+
+        foreach (TxnJSONFormat jsonTransaction in jsonTransactions)
+        {
+            logger.Info($"jsonTransaction: {jsonTransaction}");
+            // Create the from and to person objects
+            int fromPersonId = GetOrCreatePerson(jsonTransaction.FromAccount);
+            logger.Info($"Got/Created a from person with id: {fromPersonId}");
+            int toPersonId = GetOrCreatePerson(jsonTransaction.ToAccount);
+            logger.Info($"Got/Created a to person with id: {fromPersonId}");
+
+            // Console.WriteLine(jsonTransaction);
+            Transaction transaction = new Transaction
+            {
+                TransactionDate = DateOnly.Parse(jsonTransaction.Date),
+                FromPersonId = fromPersonId,
+                ToPersonId = toPersonId,
+                Narrative = jsonTransaction.Narrative,
+                Amount = jsonTransaction.Amount
+            };
+            transactions.Add(transaction);
+            logger.Info($"Created a transaction...");
+        }
+
+        foreach (Transaction transaction in transactions)
+        {
+            Console.WriteLine(transaction);
+        }
+    }
 }
 
 void ListAll()
@@ -217,5 +257,18 @@ void ListAccount(string accountName)
     }
 
     Account? account = accounts.Find(a => a.AccountId == person.Id);
-    Console.WriteLine($"\nAmount Owed: {account.Debit:C2} Amount Due: {account.Credit:C2}");
+    Console.WriteLine($"\nAmount Owed: {account?.Debit:C2} Amount Due: {account?.Credit:C2}");
+}
+
+public class TxnJSONFormat
+{
+    public string Date { get; set; } = "";
+    public string FromAccount { get; set; } = "";
+    public string ToAccount { get; set; } = "";
+    public string Narrative { get; set; } = "";
+    public decimal Amount { get; set; }
+    public override string ToString()
+    {
+        return $"Transaction Date: {Date} FromAccount: {FromAccount} ToAccount: {ToAccount} Narrative: {Narrative} Amount: {Amount}";
+    }
 }

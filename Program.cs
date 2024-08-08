@@ -1,4 +1,7 @@
-﻿using Newtonsoft.Json;
+﻿using System.Transactions;
+using System.Xml;
+
+using Newtonsoft.Json;
 
 using NLog;
 using NLog.Config;
@@ -31,8 +34,10 @@ logger.Info("Started...");
 try
 {
     // TODO: Remove functions with side effects...
-    // ReadCSVFile("data/Transactions2014.csv");
-    ReadJSONFile("data/Transactions2013.json");
+    // transactions = ReadCSVFile("data/Transactions2014.csv");
+    // transactions = ReadCSVFile("data/DodgyTransactions2015.csv");
+    // transactions = ReadJSONFile("data/Transactions2013.json");
+    transactions = ReadXMLFile("data/Transactions2012.xml");
 
     // Process command line arguments
     switch (args.Length)
@@ -42,65 +47,56 @@ try
             return;
         case 2:
             if (args[0].ToLower() == "list")
-                switch (args[1])
+                switch (args[1].ToLower())
                 {
-                    case "All":
-                        // Console.WriteLine("Call ListAll()");
+                    case "all":
                         ListAll();
                         break;
                     default:
-                        // Console.WriteLine("Call ListAccount()");
                         ListAccount(args[1]);
                         break;
                 }
             break;
         case 4:
             throw new NotImplementedException("We have not implemented the four argument process yet.");
-        // break;
         default:
             throw new ArgumentException("Too many or too few arguments!\nList All or List <personname> commands allowed.");
     }
-
-    // foreach (Person person in people)
-    // {
-    //     Console.WriteLine(person);
-    // }
+}
+catch (InvalidDataException e)
+{
+    errorMessage = $"Invalid Data Exception: {e.Message}";
+    LogAndDisplayError(errorMessage);
 }
 catch (FileNotFoundException e)
 {
     errorMessage = $"File Not Found Exception: {e.Message}";
-    logger.Error(errorMessage);
-    Console.WriteLine($"File Not Found Exception: {e.Message}");
+    LogAndDisplayError(errorMessage);
 }
 catch (DirectoryNotFoundException e)
 {
     errorMessage = $"Directory Not Found Exception: {e.Message}";
-    logger.Error(errorMessage);
-    Console.WriteLine(errorMessage);
+    LogAndDisplayError(errorMessage);
 }
 catch (NotImplementedException e)
 {
     errorMessage = $"Not Implemented Exception: {e.Message}";
-    logger.Error(errorMessage);
-    Console.WriteLine(errorMessage);
+    LogAndDisplayError(errorMessage);
 }
 catch (IOException e)
 {
     errorMessage = $"I/O Exception: {e.Message}";
-    logger.Error(errorMessage);
-    Console.WriteLine(errorMessage);
+    LogAndDisplayError(errorMessage);
 }
 catch (ArgumentException e)
 {
     errorMessage = $"Argument Exception: {e.Message} {e.StackTrace}";
-    logger.Error(errorMessage);
-    Console.WriteLine(errorMessage);
+    LogAndDisplayError(errorMessage);
 }
 catch (Exception e)
 {
-    errorMessage = $"Exception: {e.Message}";
-    logger.Error(errorMessage);
-    Console.WriteLine(errorMessage);
+    errorMessage = $"Exception: {e.StackTrace}";
+    LogAndDisplayError(errorMessage);
 }
 
 logger.Info("Ended...");
@@ -108,6 +104,12 @@ logger.Info("Ended...");
 /*
     Functions
 */
+void LogAndDisplayError(string errorMessage)
+{
+    logger.Error(errorMessage);
+    Console.WriteLine(errorMessage);
+}
+
 int GetOrCreatePerson(string name)
 {
     logger.Info($"GetOrCreatePerson with name: {name}");
@@ -137,10 +139,41 @@ Account GetOrCreateAccount(int personId)
     return account;
 }
 
-void ReadCSVFile(string filePath)
+void CreateTransactionAndUpdateAccount
+(
+    DateOnly date,
+    int fromPrsnId,
+    int toPrsnId,
+    string desc,
+    decimal amt,
+    List<Transaction> txns)
+{
+    // Create a transaction
+    Transaction transaction = new Transaction()
+    {
+        TransactionDate = date,
+        FromPersonId = fromPrsnId,
+        ToPersonId = toPrsnId,
+        Narrative = desc,
+        Amount = amt
+    };
+    txns.Add(transaction);
+    logger.Info($"Transaction created: {transaction.TransactionDate}, from: {transaction.FromPersonId}, to: {transaction.ToPersonId}, {transaction.Narrative}, {transaction.Amount}");
+
+    // Update the accounts
+    Account fromAccount = GetOrCreateAccount(fromPrsnId);
+    fromAccount.Debit += transaction.Amount;
+    logger.Info($"Updated fromAccount amount owed: {fromAccount.Debit}");
+    Account toAccount = GetOrCreateAccount(toPrsnId);
+    toAccount.Credit += transaction.Amount;
+    logger.Info($"Updated fromAccount amount due: {fromAccount.Credit}");
+}
+
+List<Transaction> ReadCSVFile(string filePath)
 {
     logger.Info($"ReadCSVFile with file: {filePath}");
-    // using (StreamReader reader = new("data/Transactions2014.csv"))
+    List<Transaction> txns = [];
+
     using (StreamReader reader = new(filePath))
     {
         // Ignore the header record
@@ -158,38 +191,79 @@ void ReadCSVFile(string filePath)
             // Store or extract the person (to)
             int toPersonId = GetOrCreatePerson(cols[2]);
 
-            // Create a transaction
-            Transaction transaction = new Transaction()
-            {
-                TransactionDate = DateOnly.Parse(cols[0]),
-                FromPersonId = fromPersonId,
-                ToPersonId = toPersonId,
-                Narrative = cols[3],
-                Amount = decimal.Parse(cols[4])
-            };
-            transactions.Add(transaction);
-            logger.Info($"Transaction created: {transaction.TransactionDate}, from: {transaction.FromPersonId}, to: {transaction.ToPersonId}, {transaction.Narrative}, {transaction.Amount}");
-
-            // Update the accounts
-            Account fromAccount = GetOrCreateAccount(fromPersonId);
-            fromAccount.Debit += transaction.Amount;
-            logger.Info($"Updated fromAccount amount owed: {fromAccount.Debit}");
-            Account toAccount = GetOrCreateAccount(toPersonId);
-            toAccount.Credit += transaction.Amount;
-            logger.Info($"Updated fromAccount amount due: {fromAccount.Credit}");
+            DateOnly date = DateOnly.Parse(cols[0]);
+            decimal amt = decimal.Parse(cols[4]);
+            
+            CreateTransactionAndUpdateAccount(date, fromPersonId, toPersonId, cols[3], amt, txns);
         }
     }
+
+    return txns;
 }
 
-void ReadXMLFile(string filePath)
+List<Transaction> ReadXMLFile(string filePath)
 {
-    throw new NotImplementedException("Function not ready");
+    List<Transaction> txns = [];
+    string description = "";
+    decimal value = 0;
+    string from = "";
+    string to = "";
+    string? date = "";
+    int numberOfDaysSince1900 = 0;
+    DateOnly txnDate = new();
+    const string supportTransaction = "SupportTransaction";
+    XmlReader reader = XmlReader.Create(filePath);
 
+    while (reader.Read())
+    {
+        switch (reader.IsStartElement())
+        {
+            case true:
+                switch (reader.Name.ToString())
+                {
+                    case supportTransaction:
+                        date = reader.GetAttribute("Date");
+                        numberOfDaysSince1900 = int.Parse(date);
+                        // txnDate = DateOnly.FromDayNumber(numberOfDaysSince1900);
+                        txnDate = DateOnly.FromDateTime(new DateTime(1900, 01, 01).AddDays(numberOfDaysSince1900));
+                        break;
+                    case "Description":
+                        description = reader.ReadElementContentAsString();
+                        break;
+                    case "Value":
+                        value = reader.ReadElementContentAsDecimal();
+                        break;
+                    case "From":
+                        from = reader.ReadElementContentAsString();
+                        break;
+                    case "To":
+                        to = reader.ReadElementContentAsString();
+                        break;
+                }
+                break;
+            default:
+                if (reader.Name.ToString() == supportTransaction)
+                {
+                    // Console.WriteLine($"{txnDate.ToShortDateString()}, {description}, {value:C2}, {from}, {to}");
+                    // Create the 'from' person
+                    int fromPrsnId = GetOrCreatePerson(from);
+                    
+                    // Create the 'to' person
+                    int toPrsnId = GetOrCreatePerson(to);
+
+                    CreateTransactionAndUpdateAccount(txnDate, fromPrsnId, toPrsnId, description, value, txns);
+                }
+                break;
+        }
+    }
+
+    return txns;
 }
 
-void ReadJSONFile(string filePath)
+List<Transaction> ReadJSONFile(string filePath)
 {
     logger.Info("ReadJsonFile with file: {filePath}");
+    List<Transaction> txns = [];
 
     using(StreamReader reader = new(filePath))
     {
@@ -206,24 +280,25 @@ void ReadJSONFile(string filePath)
             int toPersonId = GetOrCreatePerson(jsonTransaction.ToAccount);
             logger.Info($"Got/Created a to person with id: {fromPersonId}");
 
-            // Console.WriteLine(jsonTransaction);
-            Transaction transaction = new Transaction
-            {
-                TransactionDate = DateOnly.Parse(jsonTransaction.Date),
-                FromPersonId = fromPersonId,
-                ToPersonId = toPersonId,
-                Narrative = jsonTransaction.Narrative,
-                Amount = jsonTransaction.Amount
-            };
-            transactions.Add(transaction);
-            logger.Info($"Created a transaction...");
-        }
+            DateOnly date = DateOnly.Parse(jsonTransaction.Date);
 
-        foreach (Transaction transaction in transactions)
-        {
-            Console.WriteLine(transaction);
+            CreateTransactionAndUpdateAccount(date, fromPersonId, toPersonId, jsonTransaction.Narrative, jsonTransaction.Amount, txns);
+
+            // Console.WriteLine(jsonTransaction);
+            // Transaction transaction = new Transaction
+            // {
+            //     TransactionDate = DateOnly.Parse(jsonTransaction.Date),
+            //     FromPersonId = fromPersonId,
+            //     ToPersonId = toPersonId,
+            //     Narrative = jsonTransaction.Narrative,
+            //     Amount = jsonTransaction.Amount
+            // };
+            // transactions.Add(transaction);
+            // logger.Info($"Created a transaction...");
         }
     }
+
+    return txns;
 }
 
 void ListAll()

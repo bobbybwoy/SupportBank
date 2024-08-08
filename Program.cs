@@ -1,17 +1,38 @@
-﻿List<Person> people = [];
+﻿using NLog;
+using NLog.Config;
+using NLog.Targets;
+
+List<Person> people = [];
 List<Transaction> transactions = [];
 List<Account> accounts = [];
+string errorMessage = "";
 
-// Process command line arguments
+// Setup logging... (as supplied by TechSwitch)
+var config = new LoggingConfiguration();
+var target = new FileTarget
+{
+    FileName = @"../../../logs/SupportBank.log", // To be stored in the project root..
+    Layout = @"${longdate} ${level} - ${logger}: ${message}"
+};
+config.AddTarget("File Logger", target);
+config.LoggingRules.Add(new LoggingRule("*", LogLevel.Debug, target));
+LogManager.Configuration = config;
+
+// static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+ILogger logger = LogManager.GetCurrentClassLogger();
+
+logger.Info("Started...");
 
 try
 {
-    // I don't like functions with side effects...
+    // TODO: Remove functions with side effects...
     ReadCSVFile("data/Transactions2014.csv");
 
+    // Process command line arguments
     switch (args.Length)
     {
         case 0:
+            logger.Info("Ended as no arguments were passed to program");
             return;
         case 2:
             if (args[0].ToLower() == "list")
@@ -41,38 +62,55 @@ try
 }
 catch (FileNotFoundException e)
 {
+    errorMessage = $"File Not Found Exception: {e.Message}";
+    logger.Error(errorMessage);
     Console.WriteLine($"File Not Found Exception: {e.Message}");
 }
 catch (DirectoryNotFoundException e)
 {
-    Console.WriteLine($"Directory Not Found Exception: {e.Message}");
+    errorMessage = $"Directory Not Found Exception: {e.Message}";
+    logger.Error(errorMessage);
+    Console.WriteLine(errorMessage);
 }
 catch (NotImplementedException e)
 {
-    Console.WriteLine($"Not Implemented Exception: {e.Message}");
+    errorMessage = $"Not Implemented Exception: {e.Message}";
+    logger.Error(errorMessage);
+    Console.WriteLine(errorMessage);
 }
 catch (IOException e)
 {
-    Console.WriteLine($"I/O Exception: {e.Message}");
+    errorMessage = $"I/O Exception: {e.Message}";
+    logger.Error(errorMessage);
+    Console.WriteLine(errorMessage);
 }
 catch (ArgumentException e)
 {
-    Console.WriteLine($"Argument Exception: {e.Message}");
+    errorMessage = $"Argument Exception: {e.Message}";
+    logger.Error(errorMessage);
+    Console.WriteLine(errorMessage);
 }
 catch (Exception e)
 {
-    Console.WriteLine($"Exception: {e.Message}");
+    errorMessage = $"Exception: {e.Message}";
+    logger.Error(errorMessage);
+    Console.WriteLine(errorMessage);
 }
+
+logger.Info("Ended...");
 
 /*
     Functions
 */
 int GetOrCreatePerson(string name)
 {
+    logger.Info($"GetOrCreatePerson with name: {name}");
     Person? person = people.Find(p => p.Name == name);
-    if (person is null) {
+    if (person is null)
+    {
         person = new Person(name);
         people.Add(person);
+        logger.Info($"Person created with id {person.Id}");
     }
 
     return person.Id;
@@ -80,11 +118,13 @@ int GetOrCreatePerson(string name)
 
 Account GetOrCreateAccount(int personId)
 {
-    Account? account  = accounts.Find(acct => acct.AccountId == personId);
+    logger.Info($"GetOrCreateAccount with id: {personId}");
+    Account? account = accounts.Find(acct => acct.AccountId == personId);
     if (account is null)
     {
-        account = new Account(){ AccountId = personId, };
+        account = new Account() { AccountId = personId, };
         accounts.Add(account);
+        logger.Info($"Account created with id: {account.AccountId}");
     }
 
     // Although the warning states that it may be null, this is not true...
@@ -93,6 +133,7 @@ Account GetOrCreateAccount(int personId)
 
 void ReadCSVFile(string filePath)
 {
+    logger.Info($"ReadCSVFile with file: {filePath}");
     // using (StreamReader reader = new("data/Transactions2014.csv"))
     using (StreamReader reader = new(filePath))
     {
@@ -121,12 +162,15 @@ void ReadCSVFile(string filePath)
                 Amount = decimal.Parse(cols[4])
             };
             transactions.Add(transaction);
+            logger.Info($"Transaction created: {transaction.TransactionDate}, from: {transaction.FromPersonId}, to: {transaction.ToPersonId}, {transaction.Narrative}, {transaction.Amount}");
 
             // Update the accounts
-            Account FromAccount = GetOrCreateAccount(fromPersonId);
-            FromAccount.Debit += transaction.Amount;
-            Account ToAccount = GetOrCreateAccount(toPersonId);
-            ToAccount.Credit += transaction.Amount;
+            Account fromAccount = GetOrCreateAccount(fromPersonId);
+            fromAccount.Debit += transaction.Amount;
+            logger.Info($"Updated fromAccount amount owed: {fromAccount.Debit}");
+            Account toAccount = GetOrCreateAccount(toPersonId);
+            toAccount.Credit += transaction.Amount;
+            logger.Info($"Updated fromAccount amount due: {fromAccount.Credit}");
         }
     }
 }

@@ -1,11 +1,3 @@
-
-// Process command line arguments
-
-
-/*
-    Functions
-*/
-
 public class Person
 {
     private static int _id = 0;

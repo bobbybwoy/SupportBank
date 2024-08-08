@@ -1,12 +1,4 @@
-
-// Process command line arguments
-
-
-/*
-    Functions
-*/
-
-// TODO: Create an account entry class
+using NLog;
 
 public class Account
 {

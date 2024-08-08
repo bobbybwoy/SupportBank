@@ -1,11 +1,3 @@
-
-// Process command line arguments
-
-
-/*
-    Functions
-*/
-
 public class Transaction
 {
     public DateOnly TransactionDate { get; set; }

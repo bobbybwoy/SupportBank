@@ -13,6 +13,7 @@
 *.userosscache
 *.sln.docstates
 snippets.txt
+*copy.cs
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
